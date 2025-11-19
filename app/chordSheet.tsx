@@ -11,7 +11,7 @@ import {
   Alert,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { WebView } from "react-native-webview";
+import { CustomWebView } from "@/components/CustomWebView";
 import { IconSymbol } from "@/components/IconSymbol";
 import { colors } from "@/styles/commonStyles";
 import { ChordSheet } from "@/types/chordSheet";
@@ -141,8 +141,8 @@ export default function ChordSheetScreen() {
 
       {isPDF && pdfUri ? (
         <View style={styles.pdfContainer}>
-          <WebView
-            source={{ uri: pdfUri }}
+          <CustomWebView
+            uri={pdfUri}
             style={styles.webview}
             startInLoadingState={true}
             renderLoading={() => (
