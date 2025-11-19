@@ -64,10 +64,16 @@ export default function LibraryScreen() {
   const handleImport = async () => {
     try {
       console.log('Opening document picker...');
+      
+      // Different file types based on platform
+      const fileTypes = Platform.OS === 'web' 
+        ? ['text/plain', 'application/pdf', 'application/octet-stream', '*/*']
+        : ['text/plain', 'application/octet-stream', '*/*']; // No PDF on mobile
+      
       const result = await DocumentPicker.getDocumentAsync({
-        type: ['text/plain', 'application/pdf', 'application/octet-stream', '*/*'],
+        type: fileTypes,
         copyToCacheDirectory: true,
-        multiple: true, // Enable multiple file selection
+        multiple: true,
       });
 
       console.log('Document picker result:', result);
@@ -82,7 +88,7 @@ export default function LibraryScreen() {
         setImportProgress({ current: 0, total: result.assets.length });
 
         const importedSheets: ChordSheet[] = [];
-        const failedFiles: string[] = [];
+        const failedFiles: { name: string; reason: string }[] = [];
 
         // Process each file
         for (let i = 0; i < result.assets.length; i++) {
@@ -92,14 +98,27 @@ export default function LibraryScreen() {
           try {
             console.log(`Processing file ${i + 1}/${result.assets.length}:`, file.name);
 
-            // Parse the file (handles both text and PDF)
+            // Check if it's a PDF on mobile
+            if (Platform.OS !== 'web' && (file.name.toLowerCase().endsWith('.pdf') || file.mimeType === 'application/pdf')) {
+              console.log('PDF file detected on mobile - not supported');
+              failedFiles.push({ 
+                name: file.name, 
+                reason: 'PDF files are only supported on web. Please use text files on mobile.' 
+              });
+              continue;
+            }
+
+            // Parse the file (handles both text and PDF on web)
             const content = await parseChordSheetFile(file.uri, file.name, file.mimeType);
             console.log('File content length:', content.length);
 
             // Validate content
             if (!isValidChordSheet(content)) {
               console.log('Invalid chord sheet:', file.name);
-              failedFiles.push(file.name);
+              failedFiles.push({ 
+                name: file.name, 
+                reason: 'File does not appear to contain chord sheet data' 
+              });
               continue;
             }
 
@@ -125,7 +144,8 @@ export default function LibraryScreen() {
             console.log('Import successful:', newSheet.title);
           } catch (error) {
             console.error('Error processing file:', file.name, error);
-            failedFiles.push(file.name);
+            const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+            failedFiles.push({ name: file.name, reason: errorMessage });
           }
         }
 
@@ -142,7 +162,10 @@ export default function LibraryScreen() {
           message += `Successfully imported ${successCount} chord sheet${successCount > 1 ? 's' : ''}.`;
         }
         if (failCount > 0) {
-          message += `\n\nFailed to import ${failCount} file${failCount > 1 ? 's' : ''}: ${failedFiles.join(', ')}`;
+          message += `\n\nFailed to import ${failCount} file${failCount > 1 ? 's' : ''}:\n`;
+          failedFiles.forEach(f => {
+            message += `\n• ${f.name}: ${f.reason}`;
+          });
         }
 
         if (Platform.OS === 'web') {
@@ -158,12 +181,13 @@ export default function LibraryScreen() {
     } catch (error) {
       console.error('Error importing chord sheets:', error);
       setIsImporting(false);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
       if (Platform.OS === 'web') {
-        window.alert('Failed to import chord sheets. Please try again.');
+        window.alert(`Failed to import chord sheets: ${errorMessage}`);
       } else {
         Alert.alert(
           'Import Failed',
-          'Failed to import chord sheets. Please try again.',
+          `Failed to import chord sheets: ${errorMessage}`,
           [{ text: 'OK' }]
         );
       }
@@ -199,6 +223,10 @@ export default function LibraryScreen() {
       );
     }
   };
+
+  const supportedFormatsText = Platform.OS === 'web' 
+    ? 'Supports .txt, .chordpro, and .pdf files'
+    : 'Supports .txt and .chordpro files (PDF only on web)';
 
   return (
     <SafeAreaView
@@ -303,7 +331,7 @@ export default function LibraryScreen() {
                 : "Tap + to create or import chord sheets"}
             </Text>
             <Text style={styles.emptySubtext}>
-              Supports .txt, .chordpro, and .pdf files
+              {supportedFormatsText}
             </Text>
           </View>
         ) : (

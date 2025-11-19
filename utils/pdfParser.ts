@@ -1,21 +1,26 @@
 
-import * as pdfjsLib from 'pdfjs-dist';
-
-// Configure the worker for PDF.js
-// For React Native, we need to use the legacy build
-if (typeof window !== 'undefined') {
-  // Web environment
-  pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
-}
+import { Platform } from 'react-native';
 
 /**
  * Extract text content from a PDF file
+ * Note: PDF parsing is only supported on web platform
  * @param uri - The URI of the PDF file
  * @returns Promise<string> - The extracted text content
  */
 export const extractTextFromPDF = async (uri: string): Promise<string> => {
   try {
     console.log('Extracting text from PDF:', uri);
+    
+    // PDF.js only works on web platform
+    if (Platform.OS !== 'web') {
+      throw new Error('PDF parsing is only supported on web. Please use text files (.txt, .chordpro) on mobile devices.');
+    }
+    
+    // Dynamically import PDF.js only on web
+    const pdfjsLib = await import('pdfjs-dist');
+    
+    // Configure the worker for PDF.js
+    pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
     
     // Fetch the PDF file
     const response = await fetch(uri);
@@ -47,6 +52,9 @@ export const extractTextFromPDF = async (uri: string): Promise<string> => {
     return fullText.trim();
   } catch (error) {
     console.error('Error extracting text from PDF:', error);
+    if (Platform.OS !== 'web') {
+      throw new Error('PDF parsing is only supported on web. Please use text files (.txt, .chordpro) on mobile devices.');
+    }
     throw new Error('Failed to extract text from PDF. The file may be corrupted or password-protected.');
   }
 };
