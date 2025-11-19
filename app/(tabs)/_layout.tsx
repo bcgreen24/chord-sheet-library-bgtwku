@@ -1,6 +1,8 @@
+
 import React from 'react';
 import { Stack } from 'expo-router';
 import FloatingTabBar, { TabBarItem } from '@/components/FloatingTabBar';
+import { colors } from '@/styles/commonStyles';
 
 export default function TabLayout() {
   // Define the tabs configuration
@@ -8,14 +10,14 @@ export default function TabLayout() {
     {
       name: '(home)',
       route: '/(tabs)/(home)/',
-      icon: 'home',
-      label: 'Home',
+      icon: 'library-music',
+      label: 'Library',
     },
     {
-      name: 'profile',
-      route: '/(tabs)/profile',
-      icon: 'person',
-      label: 'Profile',
+      name: 'setlists',
+      route: '/(tabs)/setlists',
+      icon: 'playlist-play',
+      label: 'Setlists',
     },
   ];
 
@@ -29,7 +31,7 @@ export default function TabLayout() {
         }}
       >
         <Stack.Screen key="home" name="(home)" />
-        <Stack.Screen key="profile" name="profile" />
+        <Stack.Screen key="setlists" name="setlists" />
       </Stack>
       <FloatingTabBar tabs={tabs} />
     </>
