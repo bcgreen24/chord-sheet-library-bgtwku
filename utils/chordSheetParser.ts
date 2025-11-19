@@ -1,28 +1,36 @@
 
 import { ChordSheet } from '@/types/chordSheet';
-import { extractTextFromPDF, isPDFFile } from './pdfParser';
+import { isPDFFile } from './pdfParser';
 
 /**
  * Parse a chord sheet file and extract text content
- * Supports text files and PDF files
+ * For PDFs, returns metadata only (no text extraction)
+ * For text files, reads the content directly
  */
 export const parseChordSheetFile = async (
   uri: string,
   fileName: string,
   mimeType?: string
-): Promise<string> => {
+): Promise<{ content: string; isPDF: boolean; pdfUri?: string }> => {
   try {
     // Check if it's a PDF file
     if (isPDFFile(fileName, mimeType)) {
-      console.log('Detected PDF file, extracting text...');
-      return await extractTextFromPDF(uri);
+      console.log('Detected PDF file, storing reference...');
+      return {
+        content: '',
+        isPDF: true,
+        pdfUri: uri,
+      };
     }
     
     // For text files, read directly
     console.log('Reading text file...');
     const response = await fetch(uri);
     const content = await response.text();
-    return content;
+    return {
+      content,
+      isPDF: false,
+    };
   } catch (error) {
     console.error('Error parsing chord sheet file:', error);
     throw error;
@@ -124,7 +132,12 @@ export const parseChordSheetContent = (content: string, fileName: string): Parti
 /**
  * Validate if the content looks like a chord sheet
  */
-export const isValidChordSheet = (content: string): boolean => {
+export const isValidChordSheet = (content: string, isPDF: boolean = false): boolean => {
+  // PDFs are always valid
+  if (isPDF) {
+    return true;
+  }
+
   if (!content || content.trim().length === 0) {
     return false;
   }

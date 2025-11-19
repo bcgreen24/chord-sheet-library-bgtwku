@@ -11,6 +11,15 @@ import {
   Modal,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { GestureHandlerRootView, PanGestureHandler } from "react-native-gesture-handler";
+import Animated, {
+  useSharedValue,
+  useAnimatedStyle,
+  useAnimatedGestureHandler,
+  withSpring,
+  runOnJS,
+} from "react-native-reanimated";
+import * as Haptics from "expo-haptics";
 import { IconSymbol } from "@/components/IconSymbol";
 import { colors } from "@/styles/commonStyles";
 import { Setlist, ChordSheet } from "@/types/chordSheet";
@@ -21,6 +30,8 @@ import {
 } from "@/utils/storage";
 import { useRouter, useLocalSearchParams } from "expo-router";
 
+const ITEM_HEIGHT = 88;
+
 export default function SetlistDetailScreen() {
   const router = useRouter();
   const params = useLocalSearchParams();
@@ -30,6 +41,7 @@ export default function SetlistDetailScreen() {
   const [allChordSheets, setAllChordSheets] = useState<ChordSheet[]>([]);
   const [setlistSongs, setSetlistSongs] = useState<ChordSheet[]>([]);
   const [showAddModal, setShowAddModal] = useState(false);
+  const [draggingIndex, setDraggingIndex] = useState<number | null>(null);
 
   useEffect(() => {
     loadData();
@@ -45,9 +57,9 @@ export default function SetlistDetailScreen() {
       const currentSetlist = setlists.find((s) => s.id === setlistId);
       if (currentSetlist) {
         setSetlist(currentSetlist);
-        const songs = sheets.filter((sheet) =>
-          currentSetlist.songIds.includes(sheet.id)
-        );
+        const songs = currentSetlist.songIds
+          .map((id) => sheets.find((sheet) => sheet.id === id))
+          .filter((song): song is ChordSheet => song !== undefined);
         setSetlistSongs(songs);
       }
       setAllChordSheets(sheets);
@@ -102,6 +114,25 @@ export default function SetlistDetailScreen() {
     router.push(`/chordSheet?id=${song.id}&mode=view`);
   };
 
+  const handleReorder = async (fromIndex: number, toIndex: number) => {
+    if (!setlist || fromIndex === toIndex) {
+      return;
+    }
+
+    const newSongIds = [...setlist.songIds];
+    const [movedId] = newSongIds.splice(fromIndex, 1);
+    newSongIds.splice(toIndex, 0, movedId);
+
+    const updatedSetlist: Setlist = {
+      ...setlist,
+      songIds: newSongIds,
+      updatedAt: Date.now(),
+    };
+
+    await saveSetlist(updatedSetlist);
+    await loadData();
+  };
+
   const availableSongs = allChordSheets.filter(
     (sheet) => !setlist?.songIds.includes(sheet.id)
   );
@@ -120,149 +151,244 @@ export default function SetlistDetailScreen() {
   }
 
   return (
-    <SafeAreaView
-      style={[styles.safeArea, { backgroundColor: colors.background }]}
-      edges={["top"]}
-    >
-      <View style={styles.header}>
-        <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
-          <IconSymbol
-            ios_icon_name="chevron.left"
-            android_material_icon_name="arrow-back"
-            size={24}
-            color={colors.text}
-          />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle} numberOfLines={1}>
-          {setlist.name}
-        </Text>
-        <TouchableOpacity
-          style={styles.addButton}
-          onPress={() => setShowAddModal(true)}
-        >
-          <IconSymbol
-            ios_icon_name="plus.circle.fill"
-            android_material_icon_name="add-circle"
-            size={28}
-            color={colors.primary}
-          />
-        </TouchableOpacity>
-      </View>
-
-      {setlist.description && (
-        <View style={styles.descriptionContainer}>
-          <Text style={styles.description}>{setlist.description}</Text>
-        </View>
-      )}
-
-      <ScrollView
-        style={styles.container}
-        contentContainerStyle={styles.contentContainer}
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <SafeAreaView
+        style={[styles.safeArea, { backgroundColor: colors.background }]}
+        edges={["top"]}
       >
-        {setlistSongs.length === 0 ? (
-          <View style={styles.emptyState}>
+        <View style={styles.header}>
+          <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
             <IconSymbol
-              ios_icon_name="music.note"
-              android_material_icon_name="music-note"
-              size={64}
+              ios_icon_name="chevron.left"
+              android_material_icon_name="arrow-back"
+              size={24}
+              color={colors.text}
+            />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle} numberOfLines={1}>
+            {setlist.name}
+          </Text>
+          <TouchableOpacity
+            style={styles.addButton}
+            onPress={() => setShowAddModal(true)}
+          >
+            <IconSymbol
+              ios_icon_name="plus.circle.fill"
+              android_material_icon_name="add-circle"
+              size={28}
+              color={colors.primary}
+            />
+          </TouchableOpacity>
+        </View>
+
+        {setlist.description && (
+          <View style={styles.descriptionContainer}>
+            <Text style={styles.description}>{setlist.description}</Text>
+          </View>
+        )}
+
+        <ScrollView
+          style={styles.container}
+          contentContainerStyle={styles.contentContainer}
+          scrollEnabled={draggingIndex === null}
+        >
+          {setlistSongs.length === 0 ? (
+            <View style={styles.emptyState}>
+              <IconSymbol
+                ios_icon_name="music.note"
+                android_material_icon_name="music-note"
+                size={64}
+                color={colors.textSecondary}
+              />
+              <Text style={styles.emptyText}>No songs in this setlist</Text>
+              <Text style={styles.emptySubtext}>Tap + to add songs</Text>
+            </View>
+          ) : (
+            <React.Fragment>
+              {setlistSongs.map((song, index) => (
+                <DraggableSongCard
+                  key={song.id}
+                  song={song}
+                  index={index}
+                  onPress={() => handleSongPress(song)}
+                  onRemove={() => handleRemoveSong(song.id)}
+                  onReorder={handleReorder}
+                  totalItems={setlistSongs.length}
+                  onDragStart={() => setDraggingIndex(index)}
+                  onDragEnd={() => setDraggingIndex(null)}
+                />
+              ))}
+            </React.Fragment>
+          )}
+        </ScrollView>
+
+        <Modal
+          visible={showAddModal}
+          animationType="slide"
+          transparent={true}
+          onRequestClose={() => setShowAddModal(false)}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalContent}>
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle}>Add Song</Text>
+                <TouchableOpacity onPress={() => setShowAddModal(false)}>
+                  <IconSymbol
+                    ios_icon_name="xmark.circle.fill"
+                    android_material_icon_name="cancel"
+                    size={28}
+                    color={colors.textSecondary}
+                  />
+                </TouchableOpacity>
+              </View>
+
+              <ScrollView style={styles.modalScroll}>
+                {availableSongs.length === 0 ? (
+                  <View style={styles.modalEmptyState}>
+                    <Text style={styles.modalEmptyText}>
+                      No songs available to add
+                    </Text>
+                    <Text style={styles.modalEmptySubtext}>
+                      All your chord sheets are already in this setlist
+                    </Text>
+                  </View>
+                ) : (
+                  <React.Fragment>
+                    {availableSongs.map((song, index) => (
+                      <React.Fragment key={index}>
+                        <TouchableOpacity
+                          style={styles.modalSongCard}
+                          onPress={() => handleAddSong(song.id)}
+                          activeOpacity={0.7}
+                        >
+                          <View style={styles.modalSongInfo}>
+                            <Text style={styles.modalSongTitle}>{song.title}</Text>
+                            <Text style={styles.modalSongArtist}>{song.artist}</Text>
+                          </View>
+                          <IconSymbol
+                            ios_icon_name="plus.circle"
+                            android_material_icon_name="add-circle-outline"
+                            size={24}
+                            color={colors.primary}
+                          />
+                        </TouchableOpacity>
+                      </React.Fragment>
+                    ))}
+                  </React.Fragment>
+                )}
+              </ScrollView>
+            </View>
+          </View>
+        </Modal>
+      </SafeAreaView>
+    </GestureHandlerRootView>
+  );
+}
+
+interface DraggableSongCardProps {
+  song: ChordSheet;
+  index: number;
+  onPress: () => void;
+  onRemove: () => void;
+  onReorder: (fromIndex: number, toIndex: number) => void;
+  totalItems: number;
+  onDragStart: () => void;
+  onDragEnd: () => void;
+}
+
+function DraggableSongCard({
+  song,
+  index,
+  onPress,
+  onRemove,
+  onReorder,
+  totalItems,
+  onDragStart,
+  onDragEnd,
+}: DraggableSongCardProps) {
+  const translateY = useSharedValue(0);
+  const isDragging = useSharedValue(false);
+
+  const gestureHandler = useAnimatedGestureHandler({
+    onStart: (_, ctx: any) => {
+      isDragging.value = true;
+      ctx.startY = translateY.value;
+      runOnJS(onDragStart)();
+      if (Platform.OS !== 'web') {
+        runOnJS(Haptics.impactAsync)(Haptics.ImpactFeedbackStyle.Medium);
+      }
+    },
+    onActive: (event, ctx: any) => {
+      translateY.value = ctx.startY + event.translationY;
+    },
+    onEnd: () => {
+      const newIndex = Math.round(index + translateY.value / ITEM_HEIGHT);
+      const clampedIndex = Math.max(0, Math.min(totalItems - 1, newIndex));
+      
+      if (clampedIndex !== index) {
+        runOnJS(onReorder)(index, clampedIndex);
+        if (Platform.OS !== 'web') {
+          runOnJS(Haptics.impactAsync)(Haptics.ImpactFeedbackStyle.Light);
+        }
+      }
+      
+      translateY.value = withSpring(0);
+      isDragging.value = false;
+      runOnJS(onDragEnd)();
+    },
+  });
+
+  const animatedStyle = useAnimatedStyle(() => {
+    return {
+      transform: [{ translateY: translateY.value }],
+      zIndex: isDragging.value ? 100 : 1,
+      opacity: isDragging.value ? 0.9 : 1,
+      boxShadow: isDragging.value 
+        ? "0px 8px 16px rgba(0, 0, 0, 0.2)" 
+        : "0px 2px 4px rgba(0, 0, 0, 0.1)",
+    };
+  });
+
+  return (
+    <Animated.View style={[styles.songCardWrapper, animatedStyle]}>
+      <TouchableOpacity
+        style={styles.songCard}
+        onPress={onPress}
+        activeOpacity={0.7}
+      >
+        <PanGestureHandler onGestureEvent={gestureHandler}>
+          <Animated.View style={styles.dragHandle}>
+            <IconSymbol
+              ios_icon_name="line.3.horizontal"
+              android_material_icon_name="drag-handle"
+              size={24}
               color={colors.textSecondary}
             />
-            <Text style={styles.emptyText}>No songs in this setlist</Text>
-            <Text style={styles.emptySubtext}>Tap + to add songs</Text>
-          </View>
-        ) : (
-          <React.Fragment>
-            {setlistSongs.map((song, index) => (
-              <React.Fragment key={index}>
-                <TouchableOpacity
-                  style={styles.songCard}
-                  onPress={() => handleSongPress(song)}
-                  activeOpacity={0.7}
-                >
-                  <View style={styles.songNumber}>
-                    <Text style={styles.songNumberText}>{index + 1}</Text>
-                  </View>
-                  <View style={styles.songInfo}>
-                    <Text style={styles.songTitle}>{song.title}</Text>
-                    <Text style={styles.songArtist}>{song.artist}</Text>
-                  </View>
-                  <TouchableOpacity
-                    style={styles.removeButton}
-                    onPress={() => handleRemoveSong(song.id)}
-                  >
-                    <IconSymbol
-                      ios_icon_name="minus.circle"
-                      android_material_icon_name="remove-circle"
-                      size={24}
-                      color={colors.textSecondary}
-                    />
-                  </TouchableOpacity>
-                </TouchableOpacity>
-              </React.Fragment>
-            ))}
-          </React.Fragment>
-        )}
-      </ScrollView>
-
-      <Modal
-        visible={showAddModal}
-        animationType="slide"
-        transparent={true}
-        onRequestClose={() => setShowAddModal(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Add Song</Text>
-              <TouchableOpacity onPress={() => setShowAddModal(false)}>
-                <IconSymbol
-                  ios_icon_name="xmark.circle.fill"
-                  android_material_icon_name="cancel"
-                  size={28}
-                  color={colors.textSecondary}
-                />
-              </TouchableOpacity>
-            </View>
-
-            <ScrollView style={styles.modalScroll}>
-              {availableSongs.length === 0 ? (
-                <View style={styles.modalEmptyState}>
-                  <Text style={styles.modalEmptyText}>
-                    No songs available to add
-                  </Text>
-                  <Text style={styles.modalEmptySubtext}>
-                    All your chord sheets are already in this setlist
-                  </Text>
-                </View>
-              ) : (
-                <React.Fragment>
-                  {availableSongs.map((song, index) => (
-                    <React.Fragment key={index}>
-                      <TouchableOpacity
-                        style={styles.modalSongCard}
-                        onPress={() => handleAddSong(song.id)}
-                        activeOpacity={0.7}
-                      >
-                        <View style={styles.modalSongInfo}>
-                          <Text style={styles.modalSongTitle}>{song.title}</Text>
-                          <Text style={styles.modalSongArtist}>{song.artist}</Text>
-                        </View>
-                        <IconSymbol
-                          ios_icon_name="plus.circle"
-                          android_material_icon_name="add-circle-outline"
-                          size={24}
-                          color={colors.primary}
-                        />
-                      </TouchableOpacity>
-                    </React.Fragment>
-                  ))}
-                </React.Fragment>
-              )}
-            </ScrollView>
-          </View>
+          </Animated.View>
+        </PanGestureHandler>
+        
+        <View style={styles.songNumber}>
+          <Text style={styles.songNumberText}>{index + 1}</Text>
         </View>
-      </Modal>
-    </SafeAreaView>
+        
+        <View style={styles.songInfo}>
+          <Text style={styles.songTitle}>{song.title}</Text>
+          <Text style={styles.songArtist}>{song.artist}</Text>
+        </View>
+        
+        <TouchableOpacity
+          style={styles.removeButton}
+          onPress={onRemove}
+        >
+          <IconSymbol
+            ios_icon_name="minus.circle"
+            android_material_icon_name="remove-circle"
+            size={24}
+            color={colors.textSecondary}
+          />
+        </TouchableOpacity>
+      </TouchableOpacity>
+    </Animated.View>
   );
 }
 
@@ -330,16 +456,21 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: colors.textSecondary,
   },
+  songCardWrapper: {
+    marginBottom: 12,
+  },
   songCard: {
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: colors.card,
     borderRadius: 12,
     padding: 16,
-    marginBottom: 12,
     gap: 12,
-    boxShadow: "0px 2px 4px rgba(0, 0, 0, 0.1)",
     elevation: 2,
+  },
+  dragHandle: {
+    padding: 4,
+    marginRight: 4,
   },
   songNumber: {
     width: 32,

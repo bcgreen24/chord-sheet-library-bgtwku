@@ -8,6 +8,8 @@ export interface ChordSheet {
   tempo?: string;
   createdAt: number;
   updatedAt: number;
+  isPDF?: boolean;
+  pdfUri?: string;
 }
 
 export interface Setlist {

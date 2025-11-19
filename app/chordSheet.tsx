@@ -11,6 +11,7 @@ import {
   Alert,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { WebView } from "react-native-webview";
 import { IconSymbol } from "@/components/IconSymbol";
 import { colors } from "@/styles/commonStyles";
 import { ChordSheet } from "@/types/chordSheet";
@@ -29,6 +30,8 @@ export default function ChordSheetScreen() {
   const [content, setContent] = useState("");
   const [key, setKey] = useState("");
   const [tempo, setTempo] = useState("");
+  const [isPDF, setIsPDF] = useState(false);
+  const [pdfUri, setPdfUri] = useState<string | undefined>(undefined);
 
   useEffect(() => {
     if (sheetId && mode !== "new") {
@@ -46,6 +49,8 @@ export default function ChordSheetScreen() {
         setContent(sheet.content);
         setKey(sheet.key || "");
         setTempo(sheet.tempo || "");
+        setIsPDF(sheet.isPDF || false);
+        setPdfUri(sheet.pdfUri);
       }
     } catch (error) {
       console.error("Error loading chord sheet:", error);
@@ -69,6 +74,8 @@ export default function ChordSheetScreen() {
       content: content.trim(),
       key: key.trim() || undefined,
       tempo: tempo.trim() || undefined,
+      isPDF,
+      pdfUri,
       createdAt: sheetId ? 0 : Date.now(),
       updatedAt: Date.now(),
     };
@@ -116,116 +123,138 @@ export default function ChordSheetScreen() {
         <Text style={styles.headerTitle}>
           {mode === "new" ? "New Chord Sheet" : isEditing ? "Edit" : "View"}
         </Text>
-        <TouchableOpacity
-          style={styles.editButton}
-          onPress={() => (isEditing ? handleSave() : setIsEditing(true))}
-        >
-          <IconSymbol
-            ios_icon_name={isEditing ? "checkmark" : "pencil"}
-            android_material_icon_name={isEditing ? "check" : "edit"}
-            size={24}
-            color={colors.primary}
-          />
-        </TouchableOpacity>
+        {!isPDF && (
+          <TouchableOpacity
+            style={styles.editButton}
+            onPress={() => (isEditing ? handleSave() : setIsEditing(true))}
+          >
+            <IconSymbol
+              ios_icon_name={isEditing ? "checkmark" : "pencil"}
+              android_material_icon_name={isEditing ? "check" : "edit"}
+              size={24}
+              color={colors.primary}
+            />
+          </TouchableOpacity>
+        )}
+        {isPDF && <View style={styles.editButton} />}
       </View>
 
-      <ScrollView
-        style={styles.container}
-        contentContainerStyle={styles.contentContainer}
-      >
-        {isEditing ? (
-          <View style={styles.form}>
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>Title *</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="Song title"
-                placeholderTextColor={colors.textSecondary}
-                value={title}
-                onChangeText={setTitle}
-              />
-            </View>
-
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>Artist *</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="Artist name"
-                placeholderTextColor={colors.textSecondary}
-                value={artist}
-                onChangeText={setArtist}
-              />
-            </View>
-
-            <View style={styles.row}>
-              <View style={[styles.inputGroup, styles.halfWidth]}>
-                <Text style={styles.label}>Key</Text>
+      {isPDF && pdfUri ? (
+        <View style={styles.pdfContainer}>
+          <WebView
+            source={{ uri: pdfUri }}
+            style={styles.webview}
+            startInLoadingState={true}
+            renderLoading={() => (
+              <View style={styles.loadingContainer}>
+                <Text style={styles.loadingText}>Loading PDF...</Text>
+              </View>
+            )}
+            onError={(syntheticEvent) => {
+              const { nativeEvent } = syntheticEvent;
+              console.error('WebView error:', nativeEvent);
+            }}
+          />
+        </View>
+      ) : (
+        <ScrollView
+          style={styles.container}
+          contentContainerStyle={styles.contentContainer}
+        >
+          {isEditing ? (
+            <View style={styles.form}>
+              <View style={styles.inputGroup}>
+                <Text style={styles.label}>Title *</Text>
                 <TextInput
                   style={styles.input}
-                  placeholder="e.g., C, G, Am"
+                  placeholder="Song title"
                   placeholderTextColor={colors.textSecondary}
-                  value={key}
-                  onChangeText={setKey}
+                  value={title}
+                  onChangeText={setTitle}
                 />
               </View>
 
-              <View style={[styles.inputGroup, styles.halfWidth]}>
-                <Text style={styles.label}>Tempo</Text>
+              <View style={styles.inputGroup}>
+                <Text style={styles.label}>Artist *</Text>
                 <TextInput
                   style={styles.input}
-                  placeholder="e.g., 120 BPM"
+                  placeholder="Artist name"
                   placeholderTextColor={colors.textSecondary}
-                  value={tempo}
-                  onChangeText={setTempo}
+                  value={artist}
+                  onChangeText={setArtist}
                 />
               </View>
-            </View>
 
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>Chord Sheet *</Text>
-              <TextInput
-                style={[styles.input, styles.textArea]}
-                placeholder="Enter chords and lyrics..."
-                placeholderTextColor={colors.textSecondary}
-                value={content}
-                onChangeText={setContent}
-                multiline
-                numberOfLines={20}
-              />
-            </View>
-
-            <View style={styles.buttonRow}>
-              <TouchableOpacity
-                style={[styles.button, styles.cancelButton]}
-                onPress={handleCancel}
-              >
-                <Text style={styles.cancelButtonText}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.button, styles.saveButton]}
-                onPress={handleSave}
-              >
-                <Text style={styles.saveButtonText}>Save</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        ) : (
-          <View style={styles.viewContainer}>
-            <View style={styles.viewHeader}>
-              <Text style={styles.viewTitle}>{title}</Text>
-              <Text style={styles.viewArtist}>{artist}</Text>
-              {(key || tempo) && (
-                <View style={styles.viewMeta}>
-                  {key && <Text style={styles.viewMetaText}>Key: {key}</Text>}
-                  {tempo && <Text style={styles.viewMetaText}>Tempo: {tempo}</Text>}
+              <View style={styles.row}>
+                <View style={[styles.inputGroup, styles.halfWidth]}>
+                  <Text style={styles.label}>Key</Text>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="e.g., C, G, Am"
+                    placeholderTextColor={colors.textSecondary}
+                    value={key}
+                    onChangeText={setKey}
+                  />
                 </View>
-              )}
+
+                <View style={[styles.inputGroup, styles.halfWidth]}>
+                  <Text style={styles.label}>Tempo</Text>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="e.g., 120 BPM"
+                    placeholderTextColor={colors.textSecondary}
+                    value={tempo}
+                    onChangeText={setTempo}
+                  />
+                </View>
+              </View>
+
+              <View style={styles.inputGroup}>
+                <Text style={styles.label}>Chord Sheet *</Text>
+                <TextInput
+                  style={[styles.input, styles.textArea]}
+                  placeholder="Enter chords and lyrics..."
+                  placeholderTextColor={colors.textSecondary}
+                  value={content}
+                  onChangeText={setContent}
+                  multiline
+                  numberOfLines={20}
+                />
+              </View>
+
+              <View style={styles.buttonRow}>
+                <TouchableOpacity
+                  style={[styles.button, styles.cancelButton]}
+                  onPress={handleCancel}
+                >
+                  <Text style={styles.cancelButtonText}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.button, styles.saveButton]}
+                  onPress={handleSave}
+                >
+                  <Text style={styles.saveButtonText}>Save</Text>
+                </TouchableOpacity>
+              </View>
             </View>
-            <View style={styles.divider} />
-            <Text style={styles.viewContent}>{content}</Text>
-          </View>
-        )}
-      </ScrollView>
+          ) : (
+            <View style={styles.viewContainer}>
+              <View style={styles.viewHeader}>
+                <Text style={styles.viewTitle}>{title}</Text>
+                <Text style={styles.viewArtist}>{artist}</Text>
+                {(key || tempo) && (
+                  <View style={styles.viewMeta}>
+                    {key && <Text style={styles.viewMetaText}>Key: {key}</Text>}
+                    {tempo && <Text style={styles.viewMetaText}>Tempo: {tempo}</Text>}
+                  </View>
+                )}
+              </View>
+              <View style={styles.divider} />
+              <Text style={styles.viewContent}>{content}</Text>
+            </View>
+          )}
+        </ScrollView>
+      )}
     </SafeAreaView>
   );
 }
@@ -259,6 +288,24 @@ const styles = StyleSheet.create({
   contentContainer: {
     paddingHorizontal: 20,
     paddingBottom: 40,
+  },
+  pdfContainer: {
+    flex: 1,
+    backgroundColor: colors.background,
+  },
+  webview: {
+    flex: 1,
+    backgroundColor: colors.background,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: colors.background,
+  },
+  loadingText: {
+    fontSize: 16,
+    color: colors.textSecondary,
   },
   form: {
     gap: 20,

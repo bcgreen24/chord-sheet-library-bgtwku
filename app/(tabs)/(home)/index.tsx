@@ -65,10 +65,7 @@ export default function LibraryScreen() {
     try {
       console.log('Opening document picker...');
       
-      // Different file types based on platform
-      const fileTypes = Platform.OS === 'web' 
-        ? ['text/plain', 'application/pdf', 'application/octet-stream', '*/*']
-        : ['text/plain', 'application/octet-stream', '*/*']; // No PDF on mobile
+      const fileTypes = ['text/plain', 'application/pdf', 'application/octet-stream', '*/*'];
       
       const result = await DocumentPicker.getDocumentAsync({
         type: fileTypes,
@@ -98,22 +95,12 @@ export default function LibraryScreen() {
           try {
             console.log(`Processing file ${i + 1}/${result.assets.length}:`, file.name);
 
-            // Check if it's a PDF on mobile
-            if (Platform.OS !== 'web' && (file.name.toLowerCase().endsWith('.pdf') || file.mimeType === 'application/pdf')) {
-              console.log('PDF file detected on mobile - not supported');
-              failedFiles.push({ 
-                name: file.name, 
-                reason: 'PDF files are only supported on web. Please use text files on mobile.' 
-              });
-              continue;
-            }
-
-            // Parse the file (handles both text and PDF on web)
-            const content = await parseChordSheetFile(file.uri, file.name, file.mimeType);
-            console.log('File content length:', content.length);
+            // Parse the file (handles both text and PDF)
+            const parseResult = await parseChordSheetFile(file.uri, file.name, file.mimeType);
+            console.log('Parse result:', { isPDF: parseResult.isPDF, contentLength: parseResult.content.length });
 
             // Validate content
-            if (!isValidChordSheet(content)) {
+            if (!isValidChordSheet(parseResult.content, parseResult.isPDF)) {
               console.log('Invalid chord sheet:', file.name);
               failedFiles.push({ 
                 name: file.name, 
@@ -122,21 +109,37 @@ export default function LibraryScreen() {
               continue;
             }
 
-            // Parse the content
-            const parsed = parseChordSheetContent(content, file.name);
-            console.log('Parsed chord sheet:', parsed);
+            let newSheet: ChordSheet;
 
-            // Create new chord sheet
-            const newSheet: ChordSheet = {
-              id: `${Date.now()}-${i}`,
-              title: parsed.title || 'Untitled',
-              artist: parsed.artist || 'Unknown Artist',
-              content: parsed.content || content,
-              key: parsed.key,
-              tempo: parsed.tempo,
-              createdAt: Date.now(),
-              updatedAt: Date.now(),
-            };
+            if (parseResult.isPDF) {
+              // For PDFs, store the URI and basic metadata
+              newSheet = {
+                id: `${Date.now()}-${i}`,
+                title: file.name.replace(/\.pdf$/i, ''),
+                artist: 'Unknown Artist',
+                content: '',
+                isPDF: true,
+                pdfUri: parseResult.pdfUri,
+                createdAt: Date.now(),
+                updatedAt: Date.now(),
+              };
+            } else {
+              // For text files, parse the content
+              const parsed = parseChordSheetContent(parseResult.content, file.name);
+              console.log('Parsed chord sheet:', parsed);
+
+              newSheet = {
+                id: `${Date.now()}-${i}`,
+                title: parsed.title || 'Untitled',
+                artist: parsed.artist || 'Unknown Artist',
+                content: parsed.content || parseResult.content,
+                key: parsed.key,
+                tempo: parsed.tempo,
+                isPDF: false,
+                createdAt: Date.now(),
+                updatedAt: Date.now(),
+              };
+            }
 
             // Save to storage
             await saveChordSheet(newSheet);
@@ -223,10 +226,6 @@ export default function LibraryScreen() {
       );
     }
   };
-
-  const supportedFormatsText = Platform.OS === 'web' 
-    ? 'Supports .txt, .chordpro, and .pdf files'
-    : 'Supports .txt and .chordpro files (PDF only on web)';
 
   return (
     <SafeAreaView
@@ -331,7 +330,7 @@ export default function LibraryScreen() {
                 : "Tap + to create or import chord sheets"}
             </Text>
             <Text style={styles.emptySubtext}>
-              {supportedFormatsText}
+              Supports .txt, .chordpro, and .pdf files
             </Text>
           </View>
         ) : (
@@ -345,7 +344,14 @@ export default function LibraryScreen() {
                 >
                   <View style={styles.sheetCardContent}>
                     <View style={styles.sheetInfo}>
-                      <Text style={styles.sheetTitle}>{sheet.title}</Text>
+                      <View style={styles.titleRow}>
+                        <Text style={styles.sheetTitle}>{sheet.title}</Text>
+                        {sheet.isPDF && (
+                          <View style={styles.pdfBadge}>
+                            <Text style={styles.pdfBadgeText}>PDF</Text>
+                          </View>
+                        )}
+                      </View>
                       <Text style={styles.sheetArtist}>{sheet.artist}</Text>
                       {(sheet.key || sheet.tempo) && (
                         <View style={styles.sheetMeta}>
@@ -490,10 +496,26 @@ const styles = StyleSheet.create({
     flex: 1,
     gap: 4,
   },
+  titleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
   sheetTitle: {
     fontSize: 18,
     fontWeight: "600",
     color: colors.text,
+  },
+  pdfBadge: {
+    backgroundColor: colors.primary,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  pdfBadgeText: {
+    fontSize: 10,
+    fontWeight: "600",
+    color: colors.card,
   },
   sheetArtist: {
     fontSize: 14,
