@@ -13,8 +13,10 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { IconSymbol } from "@/components/IconSymbol";
 import { colors } from "@/styles/commonStyles";
 import { ChordSheet } from "@/types/chordSheet";
-import { loadChordSheets, deleteChordSheet } from "@/utils/storage";
+import { loadChordSheets, deleteChordSheet, saveChordSheet } from "@/utils/storage";
+import { parseChordSheetContent, isValidChordSheet } from "@/utils/chordSheetParser";
 import { useRouter } from "expo-router";
+import * as DocumentPicker from 'expo-document-picker';
 
 export default function LibraryScreen() {
   const [chordSheets, setChordSheets] = useState<ChordSheet[]>([]);
@@ -55,6 +57,79 @@ export default function LibraryScreen() {
     router.push('/chordSheet?mode=new');
   };
 
+  const handleImport = async () => {
+    try {
+      console.log('Opening document picker...');
+      const result = await DocumentPicker.getDocumentAsync({
+        type: ['text/plain', 'application/octet-stream', '*/*'],
+        copyToCacheDirectory: true,
+      });
+
+      console.log('Document picker result:', result);
+
+      if (result.canceled) {
+        console.log('Import cancelled');
+        return;
+      }
+
+      if (result.assets && result.assets.length > 0) {
+        const file = result.assets[0];
+        console.log('Selected file:', file.name);
+
+        // Read file content
+        const response = await fetch(file.uri);
+        const content = await response.text();
+        console.log('File content length:', content.length);
+
+        // Validate content
+        if (!isValidChordSheet(content)) {
+          Alert.alert(
+            'Invalid File',
+            'The selected file does not appear to be a valid chord sheet.',
+            [{ text: 'OK' }]
+          );
+          return;
+        }
+
+        // Parse the content
+        const parsed = parseChordSheetContent(content, file.name);
+        console.log('Parsed chord sheet:', parsed);
+
+        // Create new chord sheet
+        const newSheet: ChordSheet = {
+          id: Date.now().toString(),
+          title: parsed.title || 'Untitled',
+          artist: parsed.artist || 'Unknown Artist',
+          content: parsed.content || content,
+          key: parsed.key,
+          tempo: parsed.tempo,
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+        };
+
+        // Save to storage
+        await saveChordSheet(newSheet);
+        await loadData();
+
+        // Show success message
+        Alert.alert(
+          'Import Successful',
+          `"${newSheet.title}" has been added to your library.`,
+          [{ text: 'OK' }]
+        );
+
+        console.log('Import successful:', newSheet.title);
+      }
+    } catch (error) {
+      console.error('Error importing chord sheet:', error);
+      Alert.alert(
+        'Import Failed',
+        'Failed to import chord sheet. Please try again.',
+        [{ text: 'OK' }]
+      );
+    }
+  };
+
   const handleSheetPress = (sheet: ChordSheet) => {
     router.push(`/chordSheet?id=${sheet.id}&mode=view`);
   };
@@ -84,14 +159,24 @@ export default function LibraryScreen() {
     >
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Chord Sheets</Text>
-        <TouchableOpacity style={styles.addButton} onPress={handleAddNew}>
-          <IconSymbol
-            ios_icon_name="plus.circle.fill"
-            android_material_icon_name="add-circle"
-            size={32}
-            color={colors.primary}
-          />
-        </TouchableOpacity>
+        <View style={styles.headerButtons}>
+          <TouchableOpacity style={styles.headerButton} onPress={handleImport}>
+            <IconSymbol
+              ios_icon_name="arrow.down.doc"
+              android_material_icon_name="file-download"
+              size={28}
+              color={colors.primary}
+            />
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.headerButton} onPress={handleAddNew}>
+            <IconSymbol
+              ios_icon_name="plus.circle.fill"
+              android_material_icon_name="add-circle"
+              size={32}
+              color={colors.primary}
+            />
+          </TouchableOpacity>
+        </View>
       </View>
 
       <View style={styles.searchContainer}>
@@ -140,7 +225,7 @@ export default function LibraryScreen() {
             <Text style={styles.emptySubtext}>
               {searchQuery
                 ? "Try a different search"
-                : "Tap + to add your first chord sheet"}
+                : "Tap + to create or import a chord sheet"}
             </Text>
           </View>
         ) : (
@@ -210,7 +295,12 @@ const styles = StyleSheet.create({
     fontWeight: "bold",
     color: colors.text,
   },
-  addButton: {
+  headerButtons: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  headerButton: {
     padding: 4,
   },
   searchContainer: {
@@ -255,6 +345,8 @@ const styles = StyleSheet.create({
   emptySubtext: {
     fontSize: 16,
     color: colors.textSecondary,
+    textAlign: "center",
+    paddingHorizontal: 20,
   },
   sheetCard: {
     backgroundColor: colors.card,
