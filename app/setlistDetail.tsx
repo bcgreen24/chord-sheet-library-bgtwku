@@ -11,11 +11,10 @@ import {
   Modal,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { GestureHandlerRootView, PanGestureHandler } from "react-native-gesture-handler";
+import { GestureHandlerRootView, GestureDetector, Gesture } from "react-native-gesture-handler";
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
-  useAnimatedGestureHandler,
   withSpring,
   runOnJS,
 } from "react-native-reanimated";
@@ -308,20 +307,21 @@ function DraggableSongCard({
 }: DraggableSongCardProps) {
   const translateY = useSharedValue(0);
   const isDragging = useSharedValue(false);
+  const startY = useSharedValue(0);
 
-  const gestureHandler = useAnimatedGestureHandler({
-    onStart: (_, ctx: any) => {
+  const panGesture = Gesture.Pan()
+    .onStart(() => {
       isDragging.value = true;
-      ctx.startY = translateY.value;
+      startY.value = translateY.value;
       runOnJS(onDragStart)();
       if (Platform.OS !== 'web') {
         runOnJS(Haptics.impactAsync)(Haptics.ImpactFeedbackStyle.Medium);
       }
-    },
-    onActive: (event, ctx: any) => {
-      translateY.value = ctx.startY + event.translationY;
-    },
-    onEnd: () => {
+    })
+    .onUpdate((event) => {
+      translateY.value = startY.value + event.translationY;
+    })
+    .onEnd(() => {
       const newIndex = Math.round(index + translateY.value / ITEM_HEIGHT);
       const clampedIndex = Math.max(0, Math.min(totalItems - 1, newIndex));
       
@@ -335,8 +335,14 @@ function DraggableSongCard({
       translateY.value = withSpring(0);
       isDragging.value = false;
       runOnJS(onDragEnd)();
-    },
-  });
+    })
+    .onFinalize(() => {
+      if (isDragging.value) {
+        translateY.value = withSpring(0);
+        isDragging.value = false;
+        runOnJS(onDragEnd)();
+      }
+    });
 
   const animatedStyle = useAnimatedStyle(() => {
     return {
@@ -356,7 +362,7 @@ function DraggableSongCard({
         onPress={onPress}
         activeOpacity={0.7}
       >
-        <PanGestureHandler onGestureEvent={gestureHandler}>
+        <GestureDetector gesture={panGesture}>
           <Animated.View style={styles.dragHandle}>
             <IconSymbol
               ios_icon_name="line.3.horizontal"
@@ -365,7 +371,7 @@ function DraggableSongCard({
               color={colors.textSecondary}
             />
           </Animated.View>
-        </PanGestureHandler>
+        </GestureDetector>
         
         <View style={styles.songNumber}>
           <Text style={styles.songNumberText}>{index + 1}</Text>
