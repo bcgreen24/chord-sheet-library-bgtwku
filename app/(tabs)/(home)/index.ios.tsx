@@ -8,13 +8,14 @@ import {
   TouchableOpacity,
   TextInput,
   Alert,
+  ActivityIndicator,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { IconSymbol } from "@/components/IconSymbol";
 import { colors } from "@/styles/commonStyles";
 import { ChordSheet } from "@/types/chordSheet";
 import { loadChordSheets, deleteChordSheet, saveChordSheet } from "@/utils/storage";
-import { parseChordSheetContent, isValidChordSheet } from "@/utils/chordSheetParser";
+import { parseChordSheetContent, isValidChordSheet, parseChordSheetFile } from "@/utils/chordSheetParser";
 import { useRouter } from "expo-router";
 import * as DocumentPicker from 'expo-document-picker';
 
@@ -22,6 +23,8 @@ export default function LibraryScreen() {
   const [chordSheets, setChordSheets] = useState<ChordSheet[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [filteredSheets, setFilteredSheets] = useState<ChordSheet[]>([]);
+  const [isImporting, setIsImporting] = useState(false);
+  const [importProgress, setImportProgress] = useState({ current: 0, total: 0 });
   const router = useRouter();
 
   useEffect(() => {
@@ -61,8 +64,9 @@ export default function LibraryScreen() {
     try {
       console.log('Opening document picker...');
       const result = await DocumentPicker.getDocumentAsync({
-        type: ['text/plain', 'application/octet-stream', '*/*'],
+        type: ['text/plain', 'application/pdf', 'application/octet-stream', '*/*'],
         copyToCacheDirectory: true,
+        multiple: true, // Enable multiple file selection
       });
 
       console.log('Document picker result:', result);
@@ -73,58 +77,85 @@ export default function LibraryScreen() {
       }
 
       if (result.assets && result.assets.length > 0) {
-        const file = result.assets[0];
-        console.log('Selected file:', file.name);
+        setIsImporting(true);
+        setImportProgress({ current: 0, total: result.assets.length });
 
-        // Read file content
-        const response = await fetch(file.uri);
-        const content = await response.text();
-        console.log('File content length:', content.length);
+        const importedSheets: ChordSheet[] = [];
+        const failedFiles: string[] = [];
 
-        // Validate content
-        if (!isValidChordSheet(content)) {
-          Alert.alert(
-            'Invalid File',
-            'The selected file does not appear to be a valid chord sheet.',
-            [{ text: 'OK' }]
-          );
-          return;
+        // Process each file
+        for (let i = 0; i < result.assets.length; i++) {
+          const file = result.assets[i];
+          setImportProgress({ current: i + 1, total: result.assets.length });
+
+          try {
+            console.log(`Processing file ${i + 1}/${result.assets.length}:`, file.name);
+
+            // Parse the file (handles both text and PDF)
+            const content = await parseChordSheetFile(file.uri, file.name, file.mimeType);
+            console.log('File content length:', content.length);
+
+            // Validate content
+            if (!isValidChordSheet(content)) {
+              console.log('Invalid chord sheet:', file.name);
+              failedFiles.push(file.name);
+              continue;
+            }
+
+            // Parse the content
+            const parsed = parseChordSheetContent(content, file.name);
+            console.log('Parsed chord sheet:', parsed);
+
+            // Create new chord sheet
+            const newSheet: ChordSheet = {
+              id: `${Date.now()}-${i}`,
+              title: parsed.title || 'Untitled',
+              artist: parsed.artist || 'Unknown Artist',
+              content: parsed.content || content,
+              key: parsed.key,
+              tempo: parsed.tempo,
+              createdAt: Date.now(),
+              updatedAt: Date.now(),
+            };
+
+            // Save to storage
+            await saveChordSheet(newSheet);
+            importedSheets.push(newSheet);
+            console.log('Import successful:', newSheet.title);
+          } catch (error) {
+            console.error('Error processing file:', file.name, error);
+            failedFiles.push(file.name);
+          }
         }
 
-        // Parse the content
-        const parsed = parseChordSheetContent(content, file.name);
-        console.log('Parsed chord sheet:', parsed);
-
-        // Create new chord sheet
-        const newSheet: ChordSheet = {
-          id: Date.now().toString(),
-          title: parsed.title || 'Untitled',
-          artist: parsed.artist || 'Unknown Artist',
-          content: parsed.content || content,
-          key: parsed.key,
-          tempo: parsed.tempo,
-          createdAt: Date.now(),
-          updatedAt: Date.now(),
-        };
-
-        // Save to storage
-        await saveChordSheet(newSheet);
+        // Reload data
         await loadData();
+        setIsImporting(false);
 
-        // Show success message
+        // Show results
+        const successCount = importedSheets.length;
+        const failCount = failedFiles.length;
+
+        let message = '';
+        if (successCount > 0) {
+          message += `Successfully imported ${successCount} chord sheet${successCount > 1 ? 's' : ''}.`;
+        }
+        if (failCount > 0) {
+          message += `\n\nFailed to import ${failCount} file${failCount > 1 ? 's' : ''}: ${failedFiles.join(', ')}`;
+        }
+
         Alert.alert(
-          'Import Successful',
-          `"${newSheet.title}" has been added to your library.`,
+          'Import Complete',
+          message,
           [{ text: 'OK' }]
         );
-
-        console.log('Import successful:', newSheet.title);
       }
     } catch (error) {
-      console.error('Error importing chord sheet:', error);
+      console.error('Error importing chord sheets:', error);
+      setIsImporting(false);
       Alert.alert(
         'Import Failed',
-        'Failed to import chord sheet. Please try again.',
+        'Failed to import chord sheets. Please try again.',
         [{ text: 'OK' }]
       );
     }
@@ -160,13 +191,21 @@ export default function LibraryScreen() {
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Chord Sheets</Text>
         <View style={styles.headerButtons}>
-          <TouchableOpacity style={styles.headerButton} onPress={handleImport}>
-            <IconSymbol
-              ios_icon_name="arrow.down.doc"
-              android_material_icon_name="file-download"
-              size={28}
-              color={colors.primary}
-            />
+          <TouchableOpacity 
+            style={styles.headerButton} 
+            onPress={handleImport}
+            disabled={isImporting}
+          >
+            {isImporting ? (
+              <ActivityIndicator size="small" color={colors.primary} />
+            ) : (
+              <IconSymbol
+                ios_icon_name="arrow.down.doc"
+                android_material_icon_name="file-download"
+                size={28}
+                color={colors.primary}
+              />
+            )}
           </TouchableOpacity>
           <TouchableOpacity style={styles.headerButton} onPress={handleAddNew}>
             <IconSymbol
@@ -178,6 +217,22 @@ export default function LibraryScreen() {
           </TouchableOpacity>
         </View>
       </View>
+
+      {isImporting && (
+        <View style={styles.progressContainer}>
+          <Text style={styles.progressText}>
+            Importing {importProgress.current} of {importProgress.total} files...
+          </Text>
+          <View style={styles.progressBar}>
+            <View 
+              style={[
+                styles.progressFill, 
+                { width: `${(importProgress.current / importProgress.total) * 100}%` }
+              ]} 
+            />
+          </View>
+        </View>
+      )}
 
       <View style={styles.searchContainer}>
         <IconSymbol
@@ -225,7 +280,10 @@ export default function LibraryScreen() {
             <Text style={styles.emptySubtext}>
               {searchQuery
                 ? "Try a different search"
-                : "Tap + to create or import a chord sheet"}
+                : "Tap + to create or import chord sheets"}
+            </Text>
+            <Text style={styles.emptySubtext}>
+              Supports .txt, .chordpro, and .pdf files
             </Text>
           </View>
         ) : (
@@ -302,6 +360,25 @@ const styles = StyleSheet.create({
   },
   headerButton: {
     padding: 4,
+  },
+  progressContainer: {
+    paddingHorizontal: 20,
+    paddingBottom: 12,
+  },
+  progressText: {
+    fontSize: 14,
+    color: colors.text,
+    marginBottom: 8,
+  },
+  progressBar: {
+    height: 4,
+    backgroundColor: colors.card,
+    borderRadius: 2,
+    overflow: 'hidden',
+  },
+  progressFill: {
+    height: '100%',
+    backgroundColor: colors.primary,
   },
   searchContainer: {
     flexDirection: "row",

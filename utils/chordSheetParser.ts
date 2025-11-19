@@ -1,5 +1,33 @@
 
 import { ChordSheet } from '@/types/chordSheet';
+import { extractTextFromPDF, isPDFFile } from './pdfParser';
+
+/**
+ * Parse a chord sheet file and extract text content
+ * Supports text files and PDF files
+ */
+export const parseChordSheetFile = async (
+  uri: string,
+  fileName: string,
+  mimeType?: string
+): Promise<string> => {
+  try {
+    // Check if it's a PDF file
+    if (isPDFFile(fileName, mimeType)) {
+      console.log('Detected PDF file, extracting text...');
+      return await extractTextFromPDF(uri);
+    }
+    
+    // For text files, read directly
+    console.log('Reading text file...');
+    const response = await fetch(uri);
+    const content = await response.text();
+    return content;
+  } catch (error) {
+    console.error('Error parsing chord sheet file:', error);
+    throw error;
+  }
+};
 
 /**
  * Parse a chord sheet file content and extract metadata
@@ -76,7 +104,7 @@ export const parseChordSheetContent = (content: string, fileName: string): Parti
 
   // If still no title, use filename
   if (!title) {
-    title = fileName.replace(/\.(txt|chordpro|cho|crd|pro)$/i, '');
+    title = fileName.replace(/\.(txt|chordpro|cho|crd|pro|pdf)$/i, '');
   }
 
   // If still no artist, use "Unknown Artist"
