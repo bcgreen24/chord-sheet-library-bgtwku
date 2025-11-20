@@ -29,6 +29,17 @@ export const loadChordSheets = async (): Promise<ChordSheet[]> => {
   }
 };
 
+export const loadChordSheet = async (id: string): Promise<ChordSheet | null> => {
+  try {
+    const sheets = await loadChordSheets();
+    const sheet = sheets.find(s => s.id === id);
+    return sheet || null;
+  } catch (error) {
+    console.error('Error loading chord sheet:', error);
+    return null;
+  }
+};
+
 export const saveChordSheet = async (sheet: ChordSheet): Promise<void> => {
   try {
     const sheets = await loadChordSheets();

@@ -113,6 +113,11 @@ export default function SetlistDetailScreen() {
     router.push(`/chordSheet?id=${song.id}&mode=view`);
   };
 
+  const handleCreateNewChart = () => {
+    setShowAddModal(false);
+    router.push('/chordSheet?mode=new');
+  };
+
   const handleReorder = async (fromIndex: number, toIndex: number) => {
     if (!setlist || fromIndex === toIndex) {
       return;
@@ -239,6 +244,26 @@ export default function SetlistDetailScreen() {
                     color={colors.textSecondary}
                   />
                 </TouchableOpacity>
+              </View>
+
+              <TouchableOpacity
+                style={styles.createNewButton}
+                onPress={handleCreateNewChart}
+                activeOpacity={0.7}
+              >
+                <IconSymbol
+                  ios_icon_name="plus.circle.fill"
+                  android_material_icon_name="add-circle"
+                  size={24}
+                  color={colors.primary}
+                />
+                <Text style={styles.createNewButtonText}>Create New Chart</Text>
+              </TouchableOpacity>
+
+              <View style={styles.modalDivider}>
+                <View style={styles.dividerLine} />
+                <Text style={styles.dividerText}>OR SELECT EXISTING</Text>
+                <View style={styles.dividerLine} />
               </View>
 
               <ScrollView style={styles.modalScroll}>
@@ -529,6 +554,40 @@ const styles = StyleSheet.create({
     fontSize: 24,
     fontWeight: "bold",
     color: colors.text,
+  },
+  createNewButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.background,
+    borderRadius: 12,
+    padding: 16,
+    gap: 12,
+    marginBottom: 20,
+    borderWidth: 2,
+    borderColor: colors.primary,
+    borderStyle: "dashed",
+  },
+  createNewButtonText: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: colors.primary,
+  },
+  modalDivider: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 16,
+    gap: 12,
+  },
+  dividerLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: colors.border,
+  },
+  dividerText: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: colors.textSecondary,
   },
   modalScroll: {
     maxHeight: 400,
