@@ -143,7 +143,7 @@ export const isValidChordSheet = (content: string, isPDF: boolean = false): bool
   }
 
   // Check for common chord patterns
-  const chordPattern = /\b[A-G](#|b|♯|♭)?(m|maj|min|dim|aug|sus|add)?[0-9]?\b/;
+  const chordPattern = /[A-G](#|b|♯|♭)?(m|maj|min|dim|aug|sus|add)?[0-9]?/;
   const chordProPattern = /\{[^}]+\}/;
   
   // Check if content has chords or ChordPro tags
@@ -153,20 +153,34 @@ export const isValidChordSheet = (content: string, isPDF: boolean = false): bool
 /**
  * Extract chords from a line of text
  * Matches common chord patterns like C, Dm, G7, F#m, Bb, etc.
+ * FIXED: Now properly captures F# and other sharp/flat chords
  */
 const extractChordsFromLine = (line: string): string[] => {
   const chords: string[] = [];
   
-  // Enhanced chord pattern to match various chord formats
-  // Matches: C, Cm, Cmaj7, C#m, Db, F/G, Gsus4, Cadd9, etc.
-  const chordPattern = /\b([A-G](#|b|♯|♭)?(m|maj|min|dim|aug|sus|add)?[0-9]?(\/[A-G](#|b|♯|♭)?)?)\b/g;
+  // Enhanced chord pattern that properly captures sharps and flats
+  // Pattern breakdown:
+  // (?:^|[^A-Za-z]) - Start of line or non-letter (negative lookbehind alternative)
+  // ([A-G]) - Root note (captured)
+  // (#|b|♯|♭)? - Optional sharp or flat
+  // (m|maj|min|dim|aug|sus|add)? - Optional quality
+  // [0-9]* - Optional numbers (7, 9, 11, 13, etc.)
+  // (\/[A-G](#|b|♯|♭)?)? - Optional slash chord
+  // (?:[^A-Za-z]|$) - Non-letter or end of line (negative lookahead alternative)
   
-  let match;
-  while ((match = chordPattern.exec(line)) !== null) {
-    const chord = match[1].trim();
-    // Only filter out single letters that are clearly not chords
-    // Keep A and I as they could be chords
-    if (chord.length > 1 || ['A', 'B', 'C', 'D', 'E', 'F', 'G'].includes(chord)) {
+  // First, let's split by whitespace and punctuation to get potential chord tokens
+  const tokens = line.split(/[\s,;.()\[\]{}|]+/);
+  
+  for (const token of tokens) {
+    if (!token) continue;
+    
+    // More precise chord pattern without word boundaries
+    // This will match the entire chord including sharps/flats
+    const chordPattern = /^([A-G])(#|b|♯|♭)?(m|maj|min|dim|aug|sus|add)?([0-9]*)(\/([A-G])(#|b|♯|♭)?)?$/;
+    const match = token.match(chordPattern);
+    
+    if (match) {
+      const chord = match[0];
       chords.push(chord);
     }
   }
@@ -194,7 +208,7 @@ const isLyricsLine = (line: string): boolean => {
   }
   
   // Check for common lyric words (more comprehensive list)
-  const lyricWords = /\b(the|and|you|me|my|your|love|heart|time|day|night|way|life|know|see|feel|want|need|come|go|take|make|give|tell|say|think|look|find|keep|hold|stay|leave|turn|walk|run|sing|dance|play|dream|hope|wish|believe|when|where|what|who|why|how|can|will|would|could|should|have|has|had|been|being|was|were|are|is|am|do|does|did|done|doing|get|got|getting|like|just|now|then|here|there|all|some|any|every|each|other|another|more|most|much|many|few|little|big|small|good|bad|new|old|first|last|long|short|high|low|right|wrong|true|false|yes|yes|no|not|never|always|sometimes|often|maybe|perhaps|please|thank|sorry|hello|goodbye|oh|ah|yeah|well|so|but|or|if|because|though|although|while|until|since|before|after|during|between|among|through|over|under|above|below|inside|outside|into|onto|from|to|for|with|without|by|at|in|on|off|up|down|out|away|back|again|still|yet|already|soon|later|early|late|today|tomorrow|yesterday|morning|afternoon|evening|tonight|week|month|year|forever|ever|never)\b/i;
+  const lyricWords = /\b(the|and|you|me|my|your|love|heart|time|day|night|way|life|know|see|feel|want|need|come|go|take|make|give|tell|say|think|look|find|keep|hold|stay|leave|turn|walk|run|sing|dance|play|dream|hope|wish|believe|when|where|what|who|why|how|can|will|would|could|should|have|has|had|been|being|was|were|are|is|am|do|does|did|done|doing|get|got|getting|like|just|now|then|here|there|all|some|any|every|each|other|another|more|most|much|many|few|little|big|small|good|bad|new|old|first|last|long|short|high|low|right|wrong|true|false|yes|no|not|never|always|sometimes|often|maybe|perhaps|please|thank|sorry|hello|goodbye|oh|ah|yeah|well|so|but|or|if|because|though|although|while|until|since|before|after|during|between|among|through|over|under|above|below|inside|outside|into|onto|from|to|for|with|without|by|at|in|on|off|up|down|out|away|back|again|still|yet|already|soon|later|early|late|today|tomorrow|yesterday|morning|afternoon|evening|tonight|week|month|year|forever|ever)\b/i;
   
   if (lyricWords.test(line)) {
     return true;
@@ -205,7 +219,7 @@ const isLyricsLine = (line: string): boolean => {
   if (words.length > 3) {
     // Count how many words are NOT chords
     const nonChordWords = words.filter(word => {
-      const chordPattern = /^[A-G](#|b|♯|♭)?(m|maj|min|dim|aug|sus|add)?[0-9]?(\/[A-G](#|b|♯|♭)?)?$/;
+      const chordPattern = /^[A-G](#|b|♯|♭)?(m|maj|min|dim|aug|sus|add)?[0-9]*(\/[A-G](#|b|♯|♭)?)?$/;
       return !chordPattern.test(word);
     });
     
@@ -231,6 +245,8 @@ export const parseToNashvilleChart = (content: string): NashvilleChart => {
   
   // Section name patterns - matches [Verse], [Chorus], or standalone section names
   const sectionPattern = /^\[([^\]]+)\]|^(Verse|Chorus|Bridge|Intro|Outro|Pre-Chorus|Interlude|Solo|Tag|Ending|Refrain|Hook|Coda|Instrumental)[\s:]*(\d*)/i;
+  
+  console.log('Starting Nashville chart parsing...');
   
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i].trim();
@@ -259,6 +275,7 @@ export const parseToNashvilleChart = (content: string): NashvilleChart => {
         }
         currentSection.measures = measures;
         sections.push(currentSection);
+        console.log(`Added section: ${currentSection.name} with ${currentSectionChords.length} chords`);
       }
       
       // Start new section
@@ -271,11 +288,13 @@ export const parseToNashvilleChart = (content: string): NashvilleChart => {
         measures: [],
       };
       currentSectionChords = [];
+      console.log(`Starting new section: ${fullSectionName}`);
       continue;
     }
     
     // Skip lines that are clearly lyrics
     if (isLyricsLine(line)) {
+      console.log(`Skipping lyrics line: ${line}`);
       continue;
     }
     
@@ -283,12 +302,15 @@ export const parseToNashvilleChart = (content: string): NashvilleChart => {
     const chords = extractChordsFromLine(line);
     
     if (chords.length > 0) {
+      console.log(`Extracted chords from line "${line}": ${chords.join(', ')}`);
+      
       // If no section has been started, create a default one
       if (!currentSection) {
         currentSection = {
           name: 'Chart',
           measures: [],
         };
+        console.log('Created default section: Chart');
       }
       
       // Add all chords to the current section
@@ -304,15 +326,20 @@ export const parseToNashvilleChart = (content: string): NashvilleChart => {
     }
     currentSection.measures = measures;
     sections.push(currentSection);
+    console.log(`Added final section: ${currentSection.name} with ${currentSectionChords.length} chords`);
   }
   
   // If no sections were found but we have content, try to extract all chords
   if (sections.length === 0) {
+    console.log('No sections found, extracting all chords...');
     const allChords: string[] = [];
     for (const line of lines) {
       if (!isLyricsLine(line)) {
         const chords = extractChordsFromLine(line);
-        allChords.push(...chords);
+        if (chords.length > 0) {
+          console.log(`Extracted chords: ${chords.join(', ')}`);
+          allChords.push(...chords);
+        }
       }
     }
     
@@ -326,8 +353,11 @@ export const parseToNashvilleChart = (content: string): NashvilleChart => {
         name: 'Chart',
         measures,
       });
+      console.log(`Created default chart with ${allChords.length} chords`);
     }
   }
+  
+  console.log(`Nashville chart parsing complete. Found ${sections.length} sections.`);
   
   return { sections };
 };
