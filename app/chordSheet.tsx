@@ -142,14 +142,6 @@ export default function ChordSheetScreen() {
                           </View>
                         </React.Fragment>
                       ))}
-                      {/* Fill empty measures with dashes */}
-                      {measureLine.length < 4 && Array.from({ length: 4 - measureLine.length }).map((_, emptyIndex) => (
-                        <React.Fragment key={`empty-${emptyIndex}`}>
-                          <View style={styles.measureBox}>
-                            <Text style={styles.chordText}>-</Text>
-                          </View>
-                        </React.Fragment>
-                      ))}
                     </View>
                   </React.Fragment>
                 ))}

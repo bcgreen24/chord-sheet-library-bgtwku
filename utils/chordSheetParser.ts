@@ -158,14 +158,15 @@ const extractChordsFromLine = (line: string): string[] => {
   const chords: string[] = [];
   
   // Enhanced chord pattern to match various chord formats
-  // Matches: C, Cm, Cmaj7, C#m, Db, F/G, Gsus4, etc.
+  // Matches: C, Cm, Cmaj7, C#m, Db, F/G, Gsus4, Cadd9, etc.
   const chordPattern = /\b([A-G](#|b|♯|♭)?(m|maj|min|dim|aug|sus|add)?[0-9]?(\/[A-G](#|b|♯|♭)?)?)\b/g;
   
   let match;
   while ((match = chordPattern.exec(line)) !== null) {
     const chord = match[1].trim();
-    // Filter out common false positives (single letters that might be lyrics)
-    if (chord.length > 1 || ['A', 'I'].includes(chord)) {
+    // Only filter out single letters that are clearly not chords
+    // Keep A and I as they could be chords
+    if (chord.length > 1 || ['A', 'B', 'C', 'D', 'E', 'F', 'G'].includes(chord)) {
       chords.push(chord);
     }
   }
@@ -177,20 +178,41 @@ const extractChordsFromLine = (line: string): string[] => {
  * Check if a line is likely a lyrics line (not chords)
  */
 const isLyricsLine = (line: string): boolean => {
+  // Empty lines are not lyrics
+  if (!line.trim()) {
+    return false;
+  }
+  
   // Lines with lots of lowercase letters and spaces are likely lyrics
   const lowerCaseCount = (line.match(/[a-z]/g) || []).length;
   const upperCaseCount = (line.match(/[A-G]/g) || []).length;
   const totalLetters = lowerCaseCount + upperCaseCount;
   
-  // If more than 60% lowercase, it's probably lyrics
-  if (totalLetters > 0 && lowerCaseCount / totalLetters > 0.6) {
+  // If more than 50% lowercase, it's probably lyrics
+  if (totalLetters > 5 && lowerCaseCount / totalLetters > 0.5) {
     return true;
   }
   
-  // Check for common lyric words
-  const lyricWords = /\b(the|and|you|me|my|your|love|heart|time|day|night|way|life|know|see|feel|want|need|come|go|take|make|give|tell|say|think|look|find|keep|hold|stay|leave|turn|walk|run|sing|dance|play|dream|hope|wish|believe)\b/i;
+  // Check for common lyric words (more comprehensive list)
+  const lyricWords = /\b(the|and|you|me|my|your|love|heart|time|day|night|way|life|know|see|feel|want|need|come|go|take|make|give|tell|say|think|look|find|keep|hold|stay|leave|turn|walk|run|sing|dance|play|dream|hope|wish|believe|when|where|what|who|why|how|can|will|would|could|should|have|has|had|been|being|was|were|are|is|am|do|does|did|done|doing|get|got|getting|like|just|now|then|here|there|all|some|any|every|each|other|another|more|most|much|many|few|little|big|small|good|bad|new|old|first|last|long|short|high|low|right|wrong|true|false|yes|yes|no|not|never|always|sometimes|often|maybe|perhaps|please|thank|sorry|hello|goodbye|oh|ah|yeah|well|so|but|or|if|because|though|although|while|until|since|before|after|during|between|among|through|over|under|above|below|inside|outside|into|onto|from|to|for|with|without|by|at|in|on|off|up|down|out|away|back|again|still|yet|already|soon|later|early|late|today|tomorrow|yesterday|morning|afternoon|evening|tonight|week|month|year|forever|ever|never)\b/i;
+  
   if (lyricWords.test(line)) {
     return true;
+  }
+  
+  // Check if line has multiple words (more than 3 words suggests lyrics)
+  const words = line.trim().split(/\s+/);
+  if (words.length > 3) {
+    // Count how many words are NOT chords
+    const nonChordWords = words.filter(word => {
+      const chordPattern = /^[A-G](#|b|♯|♭)?(m|maj|min|dim|aug|sus|add)?[0-9]?(\/[A-G](#|b|♯|♭)?)?$/;
+      return !chordPattern.test(word);
+    });
+    
+    // If more than 60% of words are not chords, it's probably lyrics
+    if (nonChordWords.length / words.length > 0.6) {
+      return true;
+    }
   }
   
   return false;
@@ -199,11 +221,13 @@ const isLyricsLine = (line: string): boolean => {
 /**
  * Parse chord sheet content into Nashville chart format
  * Extracts sections and their chord progressions, ignoring lyrics
+ * IMPORTANT: This extracts ALL chords from each section without grouping or measures
  */
 export const parseToNashvilleChart = (content: string): NashvilleChart => {
   const lines = content.split('\n');
   const sections: NashvilleSection[] = [];
   let currentSection: NashvilleSection | null = null;
+  let currentSectionChords: string[] = [];
   
   // Section name patterns - matches [Verse], [Chorus], or standalone section names
   const sectionPattern = /^\[([^\]]+)\]|^(Verse|Chorus|Bridge|Intro|Outro|Pre-Chorus|Interlude|Solo|Tag|Ending|Refrain|Hook|Coda|Instrumental)[\s:]*(\d*)/i;
@@ -227,7 +251,13 @@ export const parseToNashvilleChart = (content: string): NashvilleChart => {
     const sectionMatch = line.match(sectionPattern);
     if (sectionMatch) {
       // Save previous section if it exists and has chords
-      if (currentSection && currentSection.measures.length > 0) {
+      if (currentSection && currentSectionChords.length > 0) {
+        // Group chords into lines of 4 for display
+        const measures: string[][] = [];
+        for (let j = 0; j < currentSectionChords.length; j += 4) {
+          measures.push(currentSectionChords.slice(j, j + 4));
+        }
+        currentSection.measures = measures;
         sections.push(currentSection);
       }
       
@@ -240,6 +270,7 @@ export const parseToNashvilleChart = (content: string): NashvilleChart => {
         name: fullSectionName,
         measures: [],
       };
+      currentSectionChords = [];
       continue;
     }
     
@@ -260,17 +291,18 @@ export const parseToNashvilleChart = (content: string): NashvilleChart => {
         };
       }
       
-      // Group chords into measures (4 chords per measure line)
-      const measuresPerLine = 4;
-      for (let j = 0; j < chords.length; j += measuresPerLine) {
-        const measureLine = chords.slice(j, j + measuresPerLine);
-        currentSection.measures.push(measureLine);
-      }
+      // Add all chords to the current section
+      currentSectionChords.push(...chords);
     }
   }
   
   // Add the last section
-  if (currentSection && currentSection.measures.length > 0) {
+  if (currentSection && currentSectionChords.length > 0) {
+    const measures: string[][] = [];
+    for (let j = 0; j < currentSectionChords.length; j += 4) {
+      measures.push(currentSectionChords.slice(j, j + 4));
+    }
+    currentSection.measures = measures;
     sections.push(currentSection);
   }
   
