@@ -51,9 +51,9 @@ export default function LibraryScreen() {
     try {
       const sheets = await loadChordSheets();
       setChordSheets(sheets);
-      console.log('Loaded chord sheets:', sheets.length);
+      console.log('Loaded Nashville charts:', sheets.length);
     } catch (error) {
-      console.error('Error loading chord sheets:', error);
+      console.error('Error loading Nashville charts:', error);
     }
   };
 
@@ -104,7 +104,7 @@ export default function LibraryScreen() {
               console.log('Invalid chord sheet:', file.name);
               failedFiles.push({ 
                 name: file.name, 
-                reason: 'File does not appear to contain chord sheet data' 
+                reason: 'File does not appear to contain chord data' 
               });
               continue;
             }
@@ -126,7 +126,7 @@ export default function LibraryScreen() {
             } else {
               // For text files, parse the content
               const parsed = parseChordSheetContent(parseResult.content, file.name);
-              console.log('Parsed chord sheet:', parsed);
+              console.log('Parsed Nashville chart:', parsed);
 
               newSheet = {
                 id: `${Date.now()}-${i}`,
@@ -162,7 +162,7 @@ export default function LibraryScreen() {
 
         let message = '';
         if (successCount > 0) {
-          message += `Successfully imported ${successCount} chord sheet${successCount > 1 ? 's' : ''}.`;
+          message += `Successfully imported ${successCount} Nashville chart${successCount > 1 ? 's' : ''}.`;
         }
         if (failCount > 0) {
           message += `\n\nFailed to import ${failCount} file${failCount > 1 ? 's' : ''}:\n`;
@@ -182,15 +182,15 @@ export default function LibraryScreen() {
         }
       }
     } catch (error) {
-      console.error('Error importing chord sheets:', error);
+      console.error('Error importing Nashville charts:', error);
       setIsImporting(false);
       const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
       if (Platform.OS === 'web') {
-        window.alert(`Failed to import chord sheets: ${errorMessage}`);
+        window.alert(`Failed to import Nashville charts: ${errorMessage}`);
       } else {
         Alert.alert(
           'Import Failed',
-          `Failed to import chord sheets: ${errorMessage}`,
+          `Failed to import Nashville charts: ${errorMessage}`,
           [{ text: 'OK' }]
         );
       }
@@ -210,7 +210,7 @@ export default function LibraryScreen() {
       }
     } else {
       Alert.alert(
-        'Delete Chord Sheet',
+        'Delete Nashville Chart',
         `Are you sure you want to delete "${sheet.title}"?`,
         [
           { text: 'Cancel', style: 'cancel' },
@@ -233,7 +233,7 @@ export default function LibraryScreen() {
       edges={["top"]}
     >
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>Chord Sheets</Text>
+        <Text style={styles.headerTitle}>Nashville Charts</Text>
         <View style={styles.headerButtons}>
           <TouchableOpacity 
             style={styles.headerButton} 
@@ -321,16 +321,16 @@ export default function LibraryScreen() {
             />
             <Text style={styles.emptyText}>
               {searchQuery
-                ? "No chord sheets found"
-                : "No chord sheets yet"}
+                ? "No Nashville charts found"
+                : "No Nashville charts yet"}
             </Text>
             <Text style={styles.emptySubtext}>
               {searchQuery
                 ? "Try a different search"
-                : "Tap + to create or import chord sheets"}
+                : "Tap + to create or import Nashville charts"}
             </Text>
             <Text style={styles.emptySubtext}>
-              Supports .txt, .chordpro, and .pdf files
+              Import chord sheets from .txt, .chordpro, or .pdf files
             </Text>
           </View>
         ) : (

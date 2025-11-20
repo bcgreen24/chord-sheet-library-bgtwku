@@ -16,6 +16,7 @@ import { IconSymbol } from "@/components/IconSymbol";
 import { colors } from "@/styles/commonStyles";
 import { ChordSheet } from "@/types/chordSheet";
 import { saveChordSheet, loadChordSheets } from "@/utils/storage";
+import { parseToNashvilleChart } from "@/utils/chordSheetParser";
 import { useRouter, useLocalSearchParams } from "expo-router";
 
 export default function ChordSheetScreen() {
@@ -106,6 +107,60 @@ export default function ChordSheetScreen() {
     }
   };
 
+  const renderNashvilleChart = () => {
+    const chart = parseToNashvilleChart(content);
+    
+    if (chart.sections.length === 0) {
+      return (
+        <View style={styles.emptyChartContainer}>
+          <Text style={styles.emptyChartText}>
+            No chords found in this chart
+          </Text>
+          <Text style={styles.emptyChartSubtext}>
+            Add chord progressions with section labels like [Verse], [Chorus], etc.
+          </Text>
+        </View>
+      );
+    }
+
+    return (
+      <View style={styles.nashvilleChartContainer}>
+        {chart.sections.map((section, sectionIndex) => (
+          <React.Fragment key={sectionIndex}>
+            <View style={styles.sectionRow}>
+              <View style={styles.sectionLabelContainer}>
+                <Text style={styles.sectionLabel}>{section.name}</Text>
+              </View>
+              <View style={styles.measuresContainer}>
+                {section.measures.map((measureLine, lineIndex) => (
+                  <React.Fragment key={lineIndex}>
+                    <View style={styles.measureLine}>
+                      {measureLine.map((chord, chordIndex) => (
+                        <React.Fragment key={chordIndex}>
+                          <View style={styles.measureBox}>
+                            <Text style={styles.chordText}>{chord}</Text>
+                          </View>
+                        </React.Fragment>
+                      ))}
+                      {/* Fill empty measures with dashes */}
+                      {measureLine.length < 4 && Array.from({ length: 4 - measureLine.length }).map((_, emptyIndex) => (
+                        <React.Fragment key={`empty-${emptyIndex}`}>
+                          <View style={styles.measureBox}>
+                            <Text style={styles.chordText}>-</Text>
+                          </View>
+                        </React.Fragment>
+                      ))}
+                    </View>
+                  </React.Fragment>
+                ))}
+              </View>
+            </View>
+          </React.Fragment>
+        ))}
+      </View>
+    );
+  };
+
   return (
     <SafeAreaView
       style={[styles.safeArea, { backgroundColor: colors.background }]}
@@ -121,7 +176,7 @@ export default function ChordSheetScreen() {
           />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>
-          {mode === "new" ? "New Chord Sheet" : isEditing ? "Edit" : "View"}
+          {mode === "new" ? "New Chart" : isEditing ? "Edit Chart" : "Nashville Chart"}
         </Text>
         {!isPDF && (
           <TouchableOpacity
@@ -210,10 +265,22 @@ export default function ChordSheetScreen() {
               </View>
 
               <View style={styles.inputGroup}>
-                <Text style={styles.label}>Chord Sheet *</Text>
+                <Text style={styles.label}>Chord Progressions *</Text>
+                <Text style={styles.helperText}>
+                  Enter chords with section labels. Example format:
+                </Text>
+                <Text style={styles.exampleText}>
+                  [Verse]{'\n'}
+                  C G Am F{'\n'}
+                  C G F G{'\n'}
+                  {'\n'}
+                  [Chorus]{'\n'}
+                  F C G Am{'\n'}
+                  F C G G
+                </Text>
                 <TextInput
                   style={[styles.input, styles.textArea]}
-                  placeholder="Enter chords and lyrics..."
+                  placeholder="Enter your chords here..."
                   placeholderTextColor={colors.textSecondary}
                   value={content}
                   onChangeText={setContent}
@@ -250,7 +317,7 @@ export default function ChordSheetScreen() {
                 )}
               </View>
               <View style={styles.divider} />
-              <Text style={styles.viewContent}>{content}</Text>
+              {renderNashvilleChart()}
             </View>
           )}
         </ScrollView>
@@ -318,6 +385,19 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     color: colors.text,
   },
+  helperText: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    fontStyle: "italic",
+  },
+  exampleText: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    fontFamily: Platform.OS === "ios" ? "Courier" : "monospace",
+    backgroundColor: colors.secondary,
+    padding: 12,
+    borderRadius: 6,
+  },
   input: {
     backgroundColor: colors.card,
     borderRadius: 8,
@@ -374,6 +454,7 @@ const styles = StyleSheet.create({
   },
   viewHeader: {
     gap: 8,
+    marginBottom: 4,
   },
   viewTitle: {
     fontSize: 28,
@@ -398,10 +479,65 @@ const styles = StyleSheet.create({
     backgroundColor: colors.secondary,
     marginVertical: 20,
   },
-  viewContent: {
+  nashvilleChartContainer: {
+    gap: 20,
+  },
+  sectionRow: {
+    flexDirection: "row",
+    gap: 16,
+    alignItems: "flex-start",
+  },
+  sectionLabelContainer: {
+    width: 90,
+    paddingTop: 8,
+  },
+  sectionLabel: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: colors.primary,
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+  },
+  measuresContainer: {
+    flex: 1,
+    gap: 8,
+  },
+  measureLine: {
+    flexDirection: "row",
+    gap: 6,
+  },
+  measureBox: {
+    flex: 1,
+    backgroundColor: colors.secondary,
+    borderRadius: 6,
+    padding: 10,
+    alignItems: "center",
+    justifyContent: "center",
+    minHeight: 44,
+    borderWidth: 1,
+    borderColor: colors.background,
+  },
+  chordText: {
     fontSize: 16,
+    fontWeight: "600",
     color: colors.text,
-    lineHeight: 24,
     fontFamily: Platform.OS === "ios" ? "Courier" : "monospace",
+  },
+  emptyChartContainer: {
+    alignItems: "center",
+    paddingVertical: 40,
+    gap: 12,
+  },
+  emptyChartText: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: colors.text,
+    textAlign: "center",
+  },
+  emptyChartSubtext: {
+    fontSize: 14,
+    color: colors.textSecondary,
+    textAlign: "center",
+    paddingHorizontal: 20,
   },
 });

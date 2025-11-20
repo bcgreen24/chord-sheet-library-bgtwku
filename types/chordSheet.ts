@@ -10,6 +10,8 @@ export interface ChordSheet {
   updatedAt: number;
   isPDF?: boolean;
   pdfUri?: string;
+  isNashvilleChart?: boolean;
+  nashvilleData?: NashvilleChartData;
 }
 
 export interface Setlist {
@@ -19,4 +21,13 @@ export interface Setlist {
   songIds: string[];
   createdAt: number;
   updatedAt: number;
+}
+
+export interface NashvilleSection {
+  name: string;
+  measures: string[][]; // Each inner array is a line of measures (chords)
+}
+
+export interface NashvilleChartData {
+  sections: NashvilleSection[];
 }
